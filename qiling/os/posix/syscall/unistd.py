@@ -936,6 +936,18 @@ def __getdents_common(ql: Qiling, fd: int, dirp: int, count: int, *, is_64: bool
                 packed_d_ino = (ql.pack64(d_ino), n)
 
             if is_64:
+                # The kernel rounds each linux_dirent64 record up to the
+                # alignment of its leading u64 d_ino, so the next record's d_ino
+                # stays aligned. Without this, strict-alignment guests (e.g.
+                # MIPS) fault with an unaligned load when walking the buffer;
+                # x86 tolerates it, which is why it was never caught. This is
+                # safe here because getdents64 places d_type *before* d_name, so
+                # the trailing pad bytes are inert. The legacy getdents layout
+                # below stores d_type at offset d_reclen-1, so it can't be
+                # padded the same way without relocating d_type -- that mistake
+                # is what got the earlier blanket fix (PR #1419) reverted.
+                d_reclen = (d_reclen + (n - 1)) & ~(n - 1)
+
                 fields = (
                     (ql.pack64(d_ino), n),
                     (ql.pack64(d_off), n),
