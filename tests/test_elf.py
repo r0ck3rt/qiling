@@ -725,6 +725,43 @@ class ELFTest(unittest.TestCase):
 
         del ql
 
+    # Regression for getdents64 record alignment. Each linux_dirent64 record
+    # must be padded so the next record's leading u64 d_ino stays 8-byte
+    # aligned; otherwise a strict-alignment guest (e.g. MIPS) faults with an
+    # unaligned load while walking the buffer. x86 tolerates the unaligned read,
+    # which is why it was never caught.
+    def test_linux_getdents64_alignment(self):
+        from qiling.const import QL_ENDIAN
+        from qiling.os.posix.syscall.fcntl import ql_syscall_open
+        from qiling.os.posix.syscall.unistd import ql_syscall_getdents64
+
+        ql = Qiling(code=b"\x00\x00\x00\x00", archtype=QL_ARCH.MIPS, ostype=QL_OS.LINUX,
+                    endian=QL_ENDIAN.EB, rootfs="../examples/rootfs/mips32_linux",
+                    verbose=QL_VERBOSE.OFF)
+
+        base = 0x100000
+        ql.mem.map(base, 0x4000)
+        path_ptr, buf_ptr = base, base + 0x100
+        ql.mem.write(path_ptr, b"/\x00")
+
+        fd = ql_syscall_open(ql, path_ptr, 0, 0)   # O_RDONLY on a directory
+        self.assertGreaterEqual(fd, 0)
+
+        nbytes = ql_syscall_getdents64(ql, fd, buf_ptr, 0x2000)
+        self.assertGreater(nbytes, 0)
+
+        # walk the linux_dirent64 records; every record (hence its leading u64
+        # d_ino) must start at an 8-byte boundary. d_reclen is a u16 at offset 16.
+        buf = bytes(ql.mem.read(buf_ptr, nbytes))
+        off = 0
+        while off < nbytes:
+            self.assertEqual(off % 8, 0, f"dirent at offset {off} is not 8-byte aligned")
+            d_reclen = int.from_bytes(buf[off + 16:off + 18], "big")
+            self.assertNotEqual(d_reclen, 0)
+            off += d_reclen
+
+        del ql
+
     def test_memory_search(self):
         ql = Qiling(code=b"\xCC", archtype=QL_ARCH.X8664, ostype=QL_OS.LINUX, verbose=QL_VERBOSE.DEBUG)
 
