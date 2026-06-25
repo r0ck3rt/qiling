@@ -112,3 +112,10 @@ class FiberManager:
             return 0
 
         return self.fibers[idx].data
+    
+    # equivalent to get, but does not set errors; used for FlsGetValue2
+    def get_noerr(self, idx: int) -> int:
+        if idx not in self.fibers:
+            return 0
+
+        return self.fibers[idx].data
