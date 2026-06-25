@@ -404,6 +404,33 @@ class ELFTest(unittest.TestCase):
         ql.run()
         del ql
 
+    def test_setsockopt_mips_so_rcvbuf(self):
+        # MIPS uses its own SO_* numbering (SO_RCVBUF = 0x1002, not the generic
+        # 0x08). The MIPS socket-option table had the wrong values, so e.g.
+        # busybox ping's setsockopt(SOL_SOCKET, SO_RCVBUF, ...) raised
+        # NotImplementedError ("Could not convert emulated socket option 4098").
+        from qiling.const import QL_ENDIAN
+        from qiling.os.posix.syscall.socket import ql_syscall_socket, ql_syscall_setsockopt
+
+        ql = Qiling(code=b"\x00\x00\x00\x00", archtype=QL_ARCH.MIPS, ostype=QL_OS.LINUX,
+                    endian=QL_ENDIAN.EB, rootfs="../examples/rootfs/mips32_linux",
+                    verbose=QL_VERBOSE.OFF)
+
+        AF_INET, SOCK_DGRAM = 2, 2
+        SOL_SOCKET, SO_RCVBUF = 0xffff, 0x1002   # MIPS values
+
+        fd = ql_syscall_socket(ql, AF_INET, SOCK_DGRAM, 0)
+        self.assertGreaterEqual(fd, 0)
+
+        base = 0x100000
+        ql.mem.map(base, 0x1000)
+        ql.mem.write_ptr(base, 16384, 4)         # requested SO_RCVBUF size
+
+        # must map SO_RCVBUF (0x1002) to the host option and succeed, not raise
+        self.assertEqual(ql_syscall_setsockopt(ql, fd, SOL_SOCKET, SO_RCVBUF, base, 4), 0)
+
+        del ql
+
     def test_elf_linux_arm_static(self):
         ql = Qiling(["../examples/rootfs/arm_linux/bin/arm_hello_static"], "../examples/rootfs/arm_linux", verbose=QL_VERBOSE.DEFAULT)
         all_mem = ql.mem.save()
