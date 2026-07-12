@@ -15,6 +15,7 @@
 
 import os
 import socket
+import select
 import re
 import tempfile
 from functools import partial
@@ -139,6 +140,10 @@ class QlGdb(QlDebugger):
         server = GdbSerialConn(self.ip, self.port, self.ql.log)
         killed = False
 
+        # let the run hook break into a free-running guest when the client sends
+        # an async interrupt (ctrl-c / \x03); see QlGdbUtils.dbg_hook.
+        self.gdb.check_interrupt = server.poll_interrupt
+
         def __hexstr(value: int, nibbles: int = 0) -> str:
             """Encode a value into a hex string.
             """
@@ -249,7 +254,10 @@ class QlGdb(QlDebugger):
                 reply = f'S{SIGINT:02x}'
 
             else:
-                if getattr(self.ql.arch, 'effective_pc', self.ql.arch.regs.arch_pc) == self.gdb.last_bp:
+                if self.gdb.interrupted:
+                    # emulation was stopped by an async interrupt from the client
+                    reply = f'S{SIGINT:02x}'
+                elif getattr(self.ql.arch, 'effective_pc', self.ql.arch.regs.arch_pc) == self.gdb.last_bp:
                     # emulation stopped because it hit a breakpoint
                     reply = f'S{SIGTRAP:02x}'
                 else:
@@ -836,6 +844,27 @@ class GdbSerialConn:
 
         self.client.close()
         self.sock.close()
+
+    def poll_interrupt(self) -> bool:
+        """Non-blocking check for an async interrupt from the client.
+
+        While the target is running the only thing gdb sends is a bare ``\\x03``
+        break byte (it waits for a stop reply before sending anything else), so
+        any readable bytes here are that interrupt or a stray protocol ack.
+        Returns True if a break was seen. Called from the run hook, so it must
+        never block.
+        """
+
+        readable, _, _ = select.select([self.client], [], [], 0)
+        if not readable:
+            return False
+
+        try:
+            incoming = self.client.recv(self.BUFSIZE)
+        except (ConnectionError, OSError):
+            return False
+
+        return b'\x03' in incoming
 
     def readpackets(self) -> Iterator[bytes]:
         """Iterate through incoming packets in an active connection until

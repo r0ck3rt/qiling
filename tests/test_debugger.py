@@ -70,6 +70,12 @@ class ReadingGdbClient:
     def send(self, msg: str):
         self.__sock.sendall(f'${msg}#{ReadingGdbClient.checksum(msg):02x}'.encode('latin'))
 
+    def send_break(self):
+        """Send an async interrupt: a bare '\x03' byte, outside of packet framing.
+        """
+
+        self.__sock.sendall(b'\x03')
+
     def read_packet(self) -> str:
         """Read a single '$<data>#<checksum>' reply, skipping any '+'/'-' acks.
         """
@@ -253,6 +259,55 @@ class DebuggerTest(unittest.TestCase):
         del ql
 
         self.assertEqual(replies, ['S05', 'S05', 'S05'])
+
+    def test_gdbdebug_async_interrupt(self):
+        # a free-running guest could not be interrupted at all: the stub is blocked
+        # inside emu_start while the target runs, so the bare '\x03' break byte a
+        # client sends to pause it was never read, and clients reported 'Cannot
+        # execute this command while the target is running'. a break must stop the
+        # guest and yield a SIGINT ('S02') stop-reply.
+        INFINITE_LOOP = bytes.fromhex('90ebfd')  # nop ; jmp -3
+
+        ql = Qiling(code=INFINITE_LOOP, archtype=QL_ARCH.X8664, ostype=QL_OS.LINUX, verbose=QL_VERBOSE.OFF)
+        ql.debugger = 'gdb:127.0.0.1:9994'
+
+        replies = []
+
+        def gdb_test_client():
+            # yield to allow ql to launch its gdbserver
+            time.sleep(1.337 * 2)
+
+            with ReadingGdbClient('127.0.0.1', 9994) as client:
+                client.send('qSupported:multiprocess+;swbreak+;hwbreak+;vContSupported+;xmlRegisters=i386')
+                client.read_packet()
+                client.send('QStartNoAckMode')
+                client.read_packet()
+
+                # let the guest free-run; it never stops on its own
+                client.send('c')
+
+                # give it time to spin, then break into it
+                time.sleep(1.337)
+                client.send_break()
+
+                try:
+                    replies.append(client.read_packet())
+                except OSError:
+                    # the stub ignored the break and the guest is still spinning.
+                    # stop it from here so the assertion below reports the failure
+                    # instead of hanging the test run forever
+                    ql.stop()
+
+                client.send('k')
+
+        thread = threading.Thread(target=gdb_test_client, daemon=True)
+        thread.start()
+
+        ql.run()
+        thread.join(timeout=30)
+        del ql
+
+        self.assertEqual(replies, ['S02'])
 
     def test_gdbdebug_shellcode_server(self):
         X8664_LIN = bytes.fromhex('31c048bbd19d9691d08c97ff48f7db53545f995257545eb03b0f05')
