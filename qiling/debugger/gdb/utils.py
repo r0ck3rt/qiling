@@ -20,10 +20,12 @@ class QlGdbUtils:
         self.exit_point = exit_point
         self.swbp = set()
         self.last_bp = None
+        self._need_flush_tb = False
 
         def __entry_point_hook(ql: Qiling):
             ql.hook_del(ep_hret)
             ql.hook_code(self.dbg_hook)
+            self._need_flush_tb = True
 
             ql.log.info(f'{PROMPT} stopped at entry point: {ql.arch.regs.arch_pc:#x}')
             ql.stop()
@@ -31,6 +33,13 @@ class QlGdbUtils:
         # set a one-time hook to be dispatched upon reaching program entry point.
         # that hook will be used to set up the breakpoint handling hook
         ep_hret = ql.hook_address(__entry_point_hook, entry_point)
+
+    def flush_tb(self):
+        """Flush Unicorn translation blocks after GDB hook or breakpoint updates."""
+        flush_tb = getattr(self.ql.uc, 'ctl_flush_tb', None)
+
+        if flush_tb is not None:
+            flush_tb()
 
     def dbg_hook(self, ql: Qiling, address: int, size: int):
         if getattr(ql.arch, 'is_thumb', False):
@@ -56,6 +65,8 @@ class QlGdbUtils:
         for bp in targets:
             self.swbp.add(bp)
 
+        self._need_flush_tb = True
+
         self.ql.log.info(f'{PROMPT} breakpoint added at {addr:#x}')
 
         return True
@@ -69,6 +80,8 @@ class QlGdbUtils:
         for bp in targets:
             self.swbp.remove(bp)
 
+        self._need_flush_tb = True
+
         self.ql.log.info(f'{PROMPT} breakpoint removed from {addr:#x}')
 
         return True
@@ -79,6 +92,10 @@ class QlGdbUtils:
 
         if getattr(self.ql.arch, 'is_thumb', False):
             address |= 0b1
+
+        if self._need_flush_tb:
+            self.flush_tb()
+            self._need_flush_tb = False
 
         op = f'stepping {steps} instructions' if steps else 'resuming'
         self.ql.log.info(f'{PROMPT} {op} from {address:#x}')
