@@ -44,6 +44,55 @@ class SimpleGdbClient:
         self.__file.flush()
 
 
+class ReadingGdbClient:
+    """A minimal gdb remote client that can also read replies, so tests can
+    assert on the stop-reply packets the server sends back.
+    """
+
+    def __init__(self, host: str, port: int):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((host, port))
+        sock.settimeout(10)
+
+        self.__sock = sock
+        self.__buf = b''
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, ex_type, ex_value, ex_traceback):
+        self.__sock.close()
+
+    @staticmethod
+    def checksum(data: str) -> int:
+        return sum(ord(c) for c in data) & 0xff
+
+    def send(self, msg: str):
+        self.__sock.sendall(f'${msg}#{ReadingGdbClient.checksum(msg):02x}'.encode('latin'))
+
+    def read_packet(self) -> str:
+        """Read a single '$<data>#<checksum>' reply, skipping any '+'/'-' acks.
+        """
+
+        # wait for a packet start marker
+        while b'$' not in self.__buf:
+            self.__buf += self.__sock.recv(4096)
+
+        start = self.__buf.index(b'$')
+
+        # wait until the terminating '#' and its two checksum digits arrived
+        while True:
+            end = self.__buf.find(b'#', start)
+            if end != -1 and len(self.__buf) >= end + 3:
+                break
+            self.__buf += self.__sock.recv(4096)
+
+        data = self.__buf[start + 1:end]
+        self.__buf = self.__buf[end + 3:]
+
+        return data.decode('latin')
+
+
 class DebuggerTest(unittest.TestCase):
     def test_gdbdebug_file_server(self):
         ql = Qiling(["../examples/rootfs/x8664_linux/bin/x8664_hello"], "../examples/rootfs/x8664_linux", verbose=QL_VERBOSE.DEBUG)
@@ -167,6 +216,43 @@ class DebuggerTest(unittest.TestCase):
 
         ql.run()
         del ql
+
+    def test_gdbdebug_stepi_reports_sigtrap(self):
+        # regression for issues #1377 and #1538: a single-step ('s') used to be
+        # answered with a SIGTERM stop-reply because emu_state is always STOPPED
+        # after a step, which made gdb clients believe the program had died. the
+        # stop-reply for an ordinary step must be a SIGTRAP ('S05'), never a
+        # SIGTERM ('S0f').
+        ql = Qiling(["../examples/rootfs/x8664_linux/bin/x8664_hello"], "../examples/rootfs/x8664_linux", verbose=QL_VERBOSE.OFF)
+        ql.debugger = 'gdb:127.0.0.1:9996'
+
+        replies = []
+
+        def gdb_test_client():
+            # yield to allow ql to launch its gdbserver
+            time.sleep(1.337 * 2)
+
+            with ReadingGdbClient('127.0.0.1', 9996) as client:
+                client.send('qSupported:multiprocess+;swbreak+;hwbreak+;vContSupported+;xmlRegisters=i386')
+                client.read_packet()
+                client.send('QStartNoAckMode')
+                client.read_packet()
+
+                # step a few instructions; every reply must be a SIGTRAP stop
+                for _ in range(3):
+                    client.send('s')
+                    replies.append(client.read_packet())
+
+                client.send('k')
+
+        thread = threading.Thread(target=gdb_test_client, daemon=True)
+        thread.start()
+
+        ql.run()
+        thread.join(timeout=30)
+        del ql
+
+        self.assertEqual(replies, ['S05', 'S05', 'S05'])
 
     def test_gdbdebug_shellcode_server(self):
         X8664_LIN = bytes.fromhex('31c048bbd19d9691d08c97ff48f7db53545f995257545eb03b0f05')

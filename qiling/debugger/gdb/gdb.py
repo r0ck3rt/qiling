@@ -30,7 +30,7 @@ from unicorn.unicorn_const import (
 )
 
 from qiling import Qiling
-from qiling.const import QL_ARCH, QL_ENDIAN, QL_OS, QL_STATE
+from qiling.const import QL_ARCH, QL_ENDIAN, QL_OS
 from qiling.debugger import QlDebugger
 from qiling.debugger.gdb.xmlregs import QlGdbFeatures
 from qiling.debugger.gdb.utils import QlGdbUtils
@@ -55,6 +55,21 @@ SIGTERM = 15
 SIGCHLD = 16
 SIGCONT = 17
 SIGSTOP = 18
+
+# translate a unicorn cpu fault into the closest posix signal, shared by the
+# continue ('c') and single-step ('s') handlers when emulation faults
+UC_ERROR_SIGMAP = {
+    UC_ERR_READ_UNMAPPED   : SIGSEGV,
+    UC_ERR_WRITE_UNMAPPED  : SIGSEGV,
+    UC_ERR_FETCH_UNMAPPED  : SIGSEGV,
+    UC_ERR_WRITE_PROT      : SIGSEGV,
+    UC_ERR_READ_PROT       : SIGSEGV,
+    UC_ERR_FETCH_PROT      : SIGSEGV,
+    UC_ERR_READ_UNALIGNED  : SIGBUS,
+    UC_ERR_WRITE_UNALIGNED : SIGBUS,
+    UC_ERR_FETCH_UNALIGNED : SIGBUS,
+    UC_ERR_INSN_INVALID    : SIGILL
+}
 
 # common replies
 REPLY_ACK = b'+'
@@ -226,21 +241,8 @@ class QlGdb(QlDebugger):
             try:
                 self.gdb.resume_emu()
             except UcError as err:
-                sigmap = {
-                    UC_ERR_READ_UNMAPPED   : SIGSEGV,
-                    UC_ERR_WRITE_UNMAPPED  : SIGSEGV,
-                    UC_ERR_FETCH_UNMAPPED  : SIGSEGV,
-                    UC_ERR_WRITE_PROT      : SIGSEGV,
-                    UC_ERR_READ_PROT       : SIGSEGV,
-                    UC_ERR_FETCH_PROT      : SIGSEGV,
-                    UC_ERR_READ_UNALIGNED  : SIGBUS,
-                    UC_ERR_WRITE_UNALIGNED : SIGBUS,
-                    UC_ERR_FETCH_UNALIGNED : SIGBUS,
-                    UC_ERR_INSN_INVALID    : SIGILL
-                }
-
                 # determine signal from uc error; default to SIGTERM
-                reply = f'S{sigmap.get(err.errno, SIGTERM):02x}'
+                reply = f'S{UC_ERROR_SIGMAP.get(err.errno, SIGTERM):02x}'
 
             except KeyboardInterrupt:
                 # emulation was interrupted with ctrl+c
@@ -678,11 +680,23 @@ class QlGdb(QlDebugger):
             """Perform a single step.
             """
 
-            self.gdb.resume_emu(steps=1)
+            try:
+                self.gdb.resume_emu(steps=1)
+            except UcError as err:
+                # stepping faulted; report the closest posix signal
+                return f'S{UC_ERROR_SIGMAP.get(err.errno, SIGTERM):02x}'
 
-            # if emulation has been stopped, signal program termination
-            if self.ql.emu_state is QL_STATE.STOPPED:
-                return f'S{SIGTERM:02x}'
+            except KeyboardInterrupt:
+                # emulation was interrupted with ctrl+c
+                return f'S{SIGINT:02x}'
+
+            # emu_start always leaves emu_state as STOPPED after a step, so that
+            # cannot tell an ordinary step apart from the guest exiting (see
+            # issues #1377 and #1538). instead, the guest has terminated only
+            # when the step carried pc all the way to the emulation exit point.
+            if getattr(self.ql.arch, 'effective_pc', self.ql.arch.regs.arch_pc) == self.gdb.exit_point:
+                # program terminated; report its exit code
+                return f'W{self.ql.os.exit_code:02x}'
 
             # otherwise, this is just single stepping
             return f'S{SIGTRAP:02x}'
