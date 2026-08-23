@@ -260,6 +260,55 @@ class DebuggerTest(unittest.TestCase):
 
         self.assertEqual(replies, ['S05', 'S05', 'S05'])
 
+    def test_gdbdebug_vcont_signal_actions(self):
+        # regression for issue #1377: a client resuming with a pending signal sends
+        # a 'vCont;S<sig>' or 'vCont;C<sig>' action (e.g. 'S0f' after a stop-reply we
+        # sent). the stub only recognized 'S05' and 'C05', replied empty to anything
+        # else, and the client bailed out with 'Invalid remote reply'. any signal must
+        # be accepted and carried out as a plain step or resume.
+        ql = Qiling(["../examples/rootfs/x8664_linux/bin/x8664_hello"], "../examples/rootfs/x8664_linux", verbose=QL_VERBOSE.OFF)
+        ql.debugger = 'gdb:127.0.0.1:9995'
+
+        replies = []
+
+        def gdb_test_client():
+            # yield to allow ql to launch its gdbserver
+            time.sleep(1.337 * 2)
+
+            with ReadingGdbClient('127.0.0.1', 9995) as client:
+                client.send('qSupported:multiprocess+;swbreak+;hwbreak+;vContSupported+;xmlRegisters=i386')
+                client.read_packet()
+                client.send('QStartNoAckMode')
+                client.read_packet()
+
+                client.send('vCont?')
+                replies.append(client.read_packet())
+
+                # step while delivering SIGTERM; this is the packet reported in #1377
+                client.send('vCont;S0f:p1.1;c:p1.-1')
+                replies.append(client.read_packet())
+
+                # resume while delivering SIGTERM; runs the guest to completion
+                client.send('vCont;C0f:p1.1')
+                replies.append(client.read_packet())
+
+                client.send('k')
+
+        thread = threading.Thread(target=gdb_test_client, daemon=True)
+        thread.start()
+
+        ql.run()
+        thread.join(timeout=30)
+        del ql
+
+        self.assertEqual(replies[0], 'vCont;c;C;s;S')
+
+        # the signalled step is an ordinary step: SIGTRAP, not an empty reply
+        self.assertEqual(replies[1], 'S05')
+
+        # the signalled resume ran to termination and reported an exit code
+        self.assertTrue(replies[2].startswith('W'), f'unexpected reply to signalled resume: {replies[2]!r}')
+
     def test_gdbdebug_async_interrupt(self):
         # a free-running guest could not be interrupted at all: the stub is blocked
         # inside emu_start while the target runs, so the bare '\x03' break byte a

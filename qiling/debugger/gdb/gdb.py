@@ -261,8 +261,9 @@ class QlGdb(QlDebugger):
                     # emulation stopped because it hit a breakpoint
                     reply = f'S{SIGTRAP:02x}'
                 else:
-                    # emulation has completed successfully
-                    reply = f'W{self.ql.os.exit_code:02x}'
+                    # emulation has completed successfully. note bare-metal os layers
+                    # do not have an exit code (issue #1276)
+                    reply = f'W{getattr(self.ql.os, "exit_code", 0):02x}'
 
             return reply
 
@@ -672,10 +673,17 @@ class QlGdb(QlDebugger):
                     for grp in groups:
                         cmd, *tid = grp.split(':', maxsplit=1)
 
-                        if cmd in ('c', f'C{SIGTRAP:02x}'):
+                        # 'C sig' and 'S sig' resume or step while delivering a signal
+                        # to the guest. we do not deliver signals, so the signal value
+                        # is ignored and the action is carried out as a plain resume or
+                        # step. matching only 'C05' and 'S05' here made clients that
+                        # resume with any other pending signal (e.g. 'S0f' after a stop
+                        # reply we sent) receive an empty reply and bail out with
+                        # 'Invalid remote reply' (issue #1377)
+                        if cmd[:1] in ('c', 'C'):
                             return handle_c('')
 
-                        elif cmd in ('s', f'S{SIGTRAP:02x}'):
+                        elif cmd[:1] in ('s', 'S'):
                             return handle_s('')
 
                         # FIXME: not sure how to handle multiple command
@@ -704,7 +712,7 @@ class QlGdb(QlDebugger):
             # when the step carried pc all the way to the emulation exit point.
             if getattr(self.ql.arch, 'effective_pc', self.ql.arch.regs.arch_pc) == self.gdb.exit_point:
                 # program terminated; report its exit code
-                return f'W{self.ql.os.exit_code:02x}'
+                return f'W{getattr(self.ql.os, "exit_code", 0):02x}'
 
             # otherwise, this is just single stepping
             return f'S{SIGTRAP:02x}'
