@@ -31,14 +31,14 @@ run on Linux. Windows tests are platform-gated locally (need collected DLLs).
 
 - `qiling/os/windows/windows.py:33` - `QlOsWindows(QlOs)` - `__setup_components` (`:156`) builds handle manager/registry/clipboard/fiber; `run()` (`:201`).
 - `qiling/os/windows/fncc.py` - `@winsdkapi` decorator - declares an API's calling convention and typed params; implementations live in `dlls/`.
-- API dispatch is address-based: IAT addresses recorded by the PE loader are hooked and marshalled through `QlFunctionCall` — user overrides via `QlOs.set_api` (`qiling/os/os.py:224`).
+- API dispatch is address-based: IAT addresses recorded by the PE loader are hooked and marshalled through `QlFunctionCall` — user overrides via `QlOs.set_api` (`qiling/os/os.py:225`).
 - `qiling/os/uefi/uefi.py:22` - `QlOsUefi(QlOs)` - executes DXE/SMM modules; services in `bs.py`/`rt.py`/`smm.py` are installed as callable tables.
 - `qiling/os/dos/dos.py:33` - `QlOsDos(QlOs)` - dispatches BIOS/DOS interrupts from `interrupts/`.
 
 ## Interactions
 
 - All three subclass [os-base.md](os-base.md) `QlOs` and allocate from `QlMemoryHeap`.
-- [loader.md](loader.md): `QlLoaderPE` builds PEB/TEB and records IAT hook addresses; `QlLoaderPE_UEFI` installs protocols into `os/uefi/context.py`; `QlLoaderDOS` sets real-mode state.
+- [loader.md](loader.md): `QlLoaderPE` builds PEB/TEB and records IAT hook addresses; `QlLoaderPE_UEFI` installs protocols into `qiling/os/uefi/context.py`; `QlLoaderDOS` sets real-mode state.
 - Argument marshalling uses `QlFunctionCall` + `qiling/cc/intel.py` conventions ([arch.md](arch.md)).
 - The registry emulation reads hive files from the rootfs via [os-base.md](os-base.md) path services.
 - `examples/uefi_sanitized_heap.py` pairs UEFI with the heap sanitizer from [extensions.md](extensions.md).

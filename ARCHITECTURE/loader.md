@@ -30,7 +30,7 @@ Test command proves the ELF path end-to-end.
 
 - `qiling/loader/loader.py:21` - `QlLoader` - base; `Image` NamedTuple (`:15`), abstract `run()` (`:62`), `skip_exit_check` (`:27`).
 - `qiling/loader/elf.py:68` - `QlLoaderELF` - loads binary + interpreter, builds stack/auxv (`AUXV` enum `:32`), sets `entry_point`/`elf_entry`.
-- `qiling/loader/pe.py:666` - `QlLoaderPE(QlLoader, Process)` - `Process` (`:69`) builds PEB/TEB/LDR; `QlPeCache` (`:41`) caches parsed DLLs behind the `libcache` kwarg (wired in `select_loader`, `qiling/utils.py:300`).
+- `qiling/loader/pe.py:817` - `QlLoaderPE(QlLoader, Process)` - `Process` (`:77`) builds PEB/TEB/LDR; `QlPeCache` (`:49`) caches parsed DLLs behind the `libcache` kwarg (wired in `select_loader`, `qiling/utils.py:300`).
 - `qiling/loader/pe_uefi.py:26` - `QlLoaderPE_UEFI` - loads DXE/SMM modules and installs protocols into the UEFI context.
 - `qiling/loader/macho.py:70` - `QlLoaderMACHO`.
 - `qiling/loader/mcu.py:57` - `QlLoaderMCU` - with `IhexParser` (`:15`).

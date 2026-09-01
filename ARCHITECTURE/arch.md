@@ -26,7 +26,7 @@ covered by `tests/test_cpu_models.py`.
 | `qiling/arch/models.py` | CPU model enums (`X86_CPU_MODEL` … `RISCV64_CPU_MODEL`) |
 | `qiling/arch/msr.py`, `cpr.py`, `cpr64.py` | x86 MSRs, ARM/ARM64 coprocessor registers |
 | `qiling/arch/utils.py` | `QlArchUtils`: disassembly output for verbose/trace modes |
-| `qiling/cc/__init__.py` + `intel.py`, `arm.py`, `mips.py`, `ppc.py`, `riscv.py` | Calling conventions (arg/retval marshalling) consumed by `os/fcall.py` |
+| `qiling/cc/__init__.py` + `intel.py`, `arm.py`, `mips.py`, `ppc.py`, `riscv.py` | Calling conventions (arg/retval marshalling) consumed by `qiling/os/fcall.py` |
 
 ## Key Types and Entry Points
 
@@ -35,7 +35,7 @@ covered by `tests/test_cpu_models.py`.
 - `qiling/arch/x86.py:22,53,79,111` - `QlArchIntel` / `QlArchA8086` / `QlArchX86` / `QlArchX8664`.
 - `qiling/arch/cortex_m.py:67` - `QlArchCORTEX_M(QlArchARM)` - plus `QlInterruptContext` (`:25`) for exception entry/exit in MCU mode.
 - `qiling/arch/models.py` - CPU model enums selected via the `cputype` kwarg (resolved in `select_arch`, `qiling/utils.py:376`).
-- `qiling/cc/__init__.py:9` - `QlCC` - abstract calling convention; `QlCommonBaseCC` (`:104`); e.g. `cc/intel.py` defines `cdecl`/`stdcall`/`ms64`/`macosx64`.
+- `qiling/cc/__init__.py:9` - `QlCC` - abstract calling convention; `QlCommonBaseCC` (`:110`); e.g. `qiling/cc/intel.py` defines `cdecl`/`stdcall`/`ms64`/`macosx64`.
 
 ## Interactions
 

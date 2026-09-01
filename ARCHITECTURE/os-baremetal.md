@@ -11,7 +11,8 @@ released infrastructure; maturity-based status.
 ## Status
 
 `done` — MCU covered by `tests/test_mcu.py` (STM32F1/F4, GD32VF1 firmware),
-BLOB by `tests/test_blob.py` (u-boot) and `tests/test_edl.py`.
+BLOB by `test_blob.BlobTest.test_uboot_arm` and `tests/test_edl.py`. The other
+case in `tests/test_blob.py` is blocked on a missing fixture (see Open Gaps).
 
 ## Code Structure
 
@@ -23,10 +24,10 @@ BLOB by `tests/test_blob.py` (u-boot) and `tests/test_edl.py`.
 
 ## Key Types and Entry Points
 
-- `qiling/os/mcu/mcu.py:37` - `QlOsMcu(QlOs)` - run loop; steps hardware between execution chunks and delivers interrupts.
+- `qiling/os/mcu/mcu.py:41` - `QlOsMcu(QlOs)` - run loop; steps hardware between execution chunks and delivers interrupts.
 - `qiling/os/mcu/mcu.py:17` - `MCUTask(UnicornTask)` - the firmware execution task.
 - `qiling/extensions/multitask.py:26` / `:152` - `UnicornTask` / `MultiTaskUnicorn(Uc)` - task-switching Unicorn subclass MCU mode runs on.
-- `qiling/os/blob/blob.py:12` - `QlOsBlob(QlOs)` - runs `entry_point` → `exit_point` with no OS services.
+- `qiling/os/blob/blob.py:14` - `QlOsBlob(QlOs)` - runs `entry_point` → `exit_point` with no OS services.
 - MCU selection: `QL_OS.MCU` is the only member of `QL_OS_BAREMETAL` (`qiling/const.py:74`); `ql.baremetal` (`qiling/core.py:357`) gates hardware-manager creation.
 
 ## Interactions
@@ -40,13 +41,21 @@ BLOB by `tests/test_blob.py` (u-boot) and `tests/test_edl.py`.
 ## How to Test
 
 ```sh
-cd tests && python3 test_blob.py   # pass = unittest "OK", exit 0
+cd tests && python3 -m unittest test_blob.BlobTest.test_uboot_arm   # pass = "OK", exit 0
 ```
 
-- MCU (also proves [hw.md](hw.md)): `cd tests && python3 test_mcu.py`.
-- Qualcomm EDL loader: `cd tests && python3 test_edl.py`.
+- MCU (also proves [hw.md](hw.md)): `cd tests && python3 test_mcu.py` — pass = `Ran 18 tests … OK`.
+- Qualcomm EDL loader: `cd tests && python3 test_edl.py` — pass = `Ran 1 test … OK`.
+- The whole `test_blob.py` file does **not** pass from a clean checkout; see
+  Open Gaps.
 
 ## Open Gaps / Roadmap
 
 - Supported chip families are those with board definitions in `qiling/extensions/mcu/` (STM32F1/F4, GD32VF1, NXP, Atmel, BES); new chips need new peripheral maps.
 - BLOB mode provides no services by design — targets needing hardware must use MCU mode instead.
+- `test_blob.BlobTest.test_blob_raw` (`tests/test_blob.py:85`) errors with
+  `FileNotFoundError` on a clean checkout: it reads
+  `examples/rootfs/blob/example_raw.bin` (`tests/test_blob.py:96`), but the
+  pinned `examples/rootfs` submodule ships only `u-boot.bin.img`. Either the
+  fixture must be added upstream and the submodule bumped, or the test skipped
+  when the fixture is absent.

@@ -29,13 +29,13 @@ everything else is exercised by every OS suite.
 
 ## Key Types and Entry Points
 
-- `qiling/os/os.py:24` - `QlOs` - composes utils/stats/path/fs-mapper; `user_defined_api` keyed by `QL_INTERCEPT`; abstract `run()` (`:239`).
-- `qiling/os/os.py:224` - `QlOs.set_api(target, handler, intercept)` - user override of an emulated API (address- or name-based).
-- `qiling/os/memory.py:23` - `QlMemoryManager` - `ql.mem`; instantiated by core *before* the OS (`qiling/core.py:188`).
-- `qiling/os/memory.py:658` - `QlMemoryHeap` - heap used by Windows/UEFI APIs and the sanitizers extension.
+- `qiling/os/os.py:24` - `QlOs` - composes utils/stats/path/fs-mapper; `user_defined_api` keyed by `QL_INTERCEPT`; abstract `run()` (`:240`).
+- `qiling/os/os.py:225` - `QlOs.set_api(target, handler, intercept)` - user override of an emulated API (address- or name-based).
+- `qiling/os/memory.py:40` - `QlMemoryManager` - `ql.mem`; instantiated by core *before* the OS (`qiling/core.py:188`).
+- `qiling/os/memory.py:678` - `QlMemoryHeap` - heap used by Windows/UEFI APIs and the sanitizers extension.
 - `qiling/os/fcall.py:21` - `QlFunctionCall` - argument/return marshalling on top of `qiling/cc/`.
 - `qiling/os/mapper.py:64` - `QlFsMapper` - behind `ql.add_fs_mapper` (`qiling/core.py:701`).
-- `qiling/os/path.py:14` - `QlOsPath` - rootfs-confined path resolution.
+- `qiling/os/path.py:16` - `QlOsPath` - rootfs-confined path resolution.
 - `qiling/os/thread.py:11` - `QlThread(Greenlet)` - gevent-based thread base.
 
 ## Interactions
