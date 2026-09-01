@@ -17,7 +17,8 @@ reverse debugging. Mature released infrastructure; maturity-based status.
 | File | Role |
 | ---- | ---- |
 | `qiling/debugger/debugger.py` | Base `QlDebugger` |
-| `qiling/debugger/gdb/gdb.py` | `QlGdb`: GDB remote-serial-protocol server |
+| `qiling/debugger/gdb/gdb.py` | `QlGdb`: GDB remote-serial-protocol server, plus the `GdbSerialConn` transport |
+| `qiling/debugger/gdb/utils.py` | `QlGdbUtils`: breakpoint table and the per-instruction `dbg_hook` that services breakpoints, stepping, and async interrupts |
 | `qiling/debugger/gdb/xmlregs.py`, `gdb/xml/` | Target-description XML per arch for modern GDB clients |
 | `qiling/debugger/qdb/qdb.py` | `QlQdb`: interactive Cmd-based debugger |
 | `qiling/debugger/qdb/arch/` | Per-arch Qdb support (arm, intel, mips) |
@@ -27,7 +28,10 @@ reverse debugging. Mature released infrastructure; maturity-based status.
 ## Key Types and Entry Points
 
 - `qiling/debugger/debugger.py:13` - `QlDebugger` - base; `run()` starts the session.
-- `qiling/debugger/gdb/gdb.py:68` - `QlGdb(QlDebugger)` - listens on ip:port, translates RSP packets to Qiling hook/mem/reg operations.
+- `qiling/debugger/gdb/gdb.py:84` - `QlGdb(QlDebugger)` - listens on ip:port, translates RSP packets to Qiling hook/mem/reg operations; `run()` (`:139`) serves the session.
+- `qiling/debugger/gdb/gdb.py:817` - `GdbSerialConn` - the socket transport; `poll_interrupt()` (`:856`) is a non-blocking check for a client `\x03`, wired into `QlGdbUtils.check_interrupt` (`qiling/debugger/gdb/gdb.py:145`) so a running guest can be broken into asynchronously.
+- `qiling/debugger/gdb/utils.py:16` - `QlGdbUtils` - `dbg_hook` (`:48`) runs per instruction to service breakpoints, single-step, and interrupts; `bp_insert`/`bp_remove` (`:81`/`:94`); `resume_emu` (`:107`).
+- Stop replies report `SIGTRAP` (`qiling/debugger/gdb/gdb.py:49`) for both single-step (`:243`) and async-interrupt stops (`:262`).
 - `qiling/debugger/qdb/qdb.py:59` - `QlQdb(Cmd, QlDebugger)` - CLI loop; `rr` mode enables record/replay reverse debugging.
 - Activation: set `ql.debugger = True | "gdb" | "gdb:0.0.0.0:9999" | "qdb" | "qdb:rr"` (`qiling/core.py:437`); instantiated lazily in `Qiling.run` via `select_debugger` (`qiling/utils.py:332`).
 - `qltool` flags: `--gdb` and `--qdb` (see [cli.md](cli.md)).

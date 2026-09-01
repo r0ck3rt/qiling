@@ -26,11 +26,11 @@ firmware images (UART echo, freertos, blink, crc, dma_clock, i2c/spi/lcd).
 
 ## Key Types and Entry Points
 
-- `qiling/hw/hw.py:14` - `QlHwManager` - available as `ql.hw`; created by core only when `ql.baremetal` (`qiling/core.py:191`).
-- `qiling/hw/hw.py:23` - `QlHwManager.create(label, struct, base)` - instantiates a peripheral from the profile entry and maps its MMIO region.
-- `qiling/hw/hw.py:82` - `QlHwManager.step()` - advances every peripheral one tick; called from the MCU run loop.
+- `qiling/hw/hw.py:60` - `QlHwManager` - available as `ql.hw`; created by core only when `ql.baremetal` (`qiling/core.py:191`).
+- `qiling/hw/hw.py:67` - `QlHwManager.create(label, struct, base)` - instantiates a peripheral from the profile entry and maps its MMIO region.
+- `qiling/hw/hw.py:135` - `QlHwManager.step()` - advances every peripheral one tick; called from the MCU run loop.
 - `qiling/hw/peripheral.py:132` - `QlPeripheral(QlPeripheralUtils)` - base class: a ctypes register struct + read/write handlers on the MMIO region.
-- `qiling/extensions/mcu/stm32f4xx/stm32f407.py` (and siblings) - chip `env` dicts consumed at `Qiling(..., env=...)` construction.
+- `qiling/extensions/mcu/stm32f4/stm32f407.py` (and siblings) - chip `env` dicts consumed at `Qiling(..., env=...)` construction.
 
 ## Interactions
 
