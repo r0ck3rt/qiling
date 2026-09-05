@@ -31,10 +31,10 @@ with reverse debugging), and fuzzing integration (AFL++/unicornafl).
 - **Shape**: pure-Python library (`from qiling import Qiling`), plus the
   `qltool` CLI and `qltui.py` TUI. Also shipped as a Docker image
   (`Dockerfile`) and PyPI package.
-- **Python**: 3.10+ (`pyproject.toml:27`). Packaging via Poetry; version
-  1.4.11-dev (`pyproject.toml:4`), status Beta, license GPLv2.
+- **Python**: 3.10+ (`pyproject.toml:37`). Packaging via Poetry; version
+  1.4.11.dev0 (`pyproject.toml:4`), status Beta, license GPL-2.0-or-later.
 - **Core dependencies**: `unicorn ==2.1.3` (hard-pinned CPU emulator,
-  `pyproject.toml:29`), `capstone` (disassembly), `keystone-engine`
+  `pyproject.toml:39`), `capstone` (disassembly), `keystone-engine`
   (assembly), `pefile`, `pyelftools`, `python-registry`, `gevent`
   (multithread emulation), `pyyaml` (MCU profiles). Extras: `fuzz` →
   unicornafl/fuzzercorn, `RE` → r2libr.
@@ -55,7 +55,7 @@ with reverse debugging), and fuzzing integration (AFL++/unicornafl).
 | `jexamples/` | Legacy example set (not covered by CI) |
 | `tests/` | CI test suite — standalone `unittest` files run from `tests/` (`tests/test_onlinux.sh`, `tests/test_pe.bat`, `tests/test_macho.sh`) |
 | `docs/` | Stubs and assets; real documentation lives at https://docs.qiling.io |
-| `qltool` | CLI entry point (see [cli.md](ARCHITECTURE/cli.md)) |
+| `qltool` / `qiling/cli.py` | Checkout launcher / installed CLI implementation (see [cli.md](ARCHITECTURE/cli.md)) |
 | `qltui.py` | Terminal UI invoked via `qltool qltui` |
 | `Dockerfile` | Multi-stage Poetry wheel build on `python:3-slim` |
 | `pyproject.toml` / `poetry.lock` | Packaging and dependency pins |
@@ -65,8 +65,9 @@ with reverse debugging), and fuzzing integration (AFL++/unicornafl).
 
 From CLI to emulated instructions (details live in the module docs):
 
-1. `qltool` parses args and builds kwargs; `run` and `code` subcommands end in
-   `Qiling(**ql_args)` (`qltool:276`) — see [cli.md](ARCHITECTURE/cli.md).
+1. `qltool` calls `qiling.cli.run`, which parses args and builds kwargs;
+   `run` and `code` subcommands end in `Qiling(**ql_args)`
+   (`qiling/cli.py:276`) — see [cli.md](ARCHITECTURE/cli.md).
 2. `Qiling.__init__` (`qiling/core.py:35`) is the composition root. Order:
    guess arch/OS from the binary if not given → instantiate arch → init
    struct/hook mixins → logger → profile → loader → memory manager → OS layer
@@ -86,16 +87,31 @@ From CLI to emulated instructions (details live in the module docs):
 ## Roadmap
 
 Maturity-based — Qiling is a released project in maintenance/beta
-(v1.4.11-dev). There are no in-repo milestones; module Status is `done` when
+(v1.4.11.dev0). There are no in-repo milestones; module Status is `done` when
 its test suite proves it. Feature requests and the forward-looking wishlist are tracked in
 GitHub issue [#333](https://github.com/qilingframework/qiling/issues/333)
 (the `TODO` file is a pointer to it). Known cross-cutting gaps:
 
 - `ChangeLog` stops at 1.4.6 (`ChangeLog:4`) while `pyproject.toml:4` says
-  1.4.11-dev.
+  1.4.11.dev0.
 - macOS is dropped from the CI matrix and the macOS/kext job is commented out
   (`.github/workflows/build-ci.yml:12`, `:84`).
 - `jexamples/` is legacy and unexercised by CI.
+
+## Packaging and Releases
+
+`.github/workflows/pythonpublish.yml` validates metadata and the lock file,
+builds a source distribution and a wheel from it, checks both with Twine,
+and runs `InstalledQltool_Test` against the installed wheel outside the
+checkout. Builds run on pushes and pull requests; publishing runs on tags.
+
+Before tagging a release, set its version with `poetry version <version>`
+and commit the change. The tag must match the package version under PEP 440
+normalization, with an optional `v` prefix. Development versions remain
+prereleases; a stable release requires a stable version in `pyproject.toml`.
+Publishing uploads to TestPyPI, then PyPI, using the existing
+`testpypi_pass` and `pypi_pass` API-token secrets. TestPyPI skips existing
+files so a production upload can be retried after TestPyPI succeeds.
 
 ## Development Loop
 
@@ -252,7 +268,7 @@ repository evidence before implementation.
   Adding an unrequested syscall, Win32 API, or peripheral register is
   out of scope; record it under the owning module's **Open Gaps /
   Roadmap**.
-- `unicorn` is hard-pinned (`pyproject.toml:29`). Changing it, or any
+- `unicorn` is hard-pinned (`pyproject.toml:39`). Changing it, or any
   behavior that depends on its version, is a project-wide event and
   never an incidental part of another change.
 
